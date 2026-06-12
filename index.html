@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Anime Eyes</title>
+  <title>Neko Eyes</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
@@ -14,7 +14,7 @@
       bottom: 28px;
       width: 100%;
       text-align: center;
-      color: rgba(255, 255, 255, 0.35);
+      color: rgba(255, 255, 255, 0.30);
       font: 13px/1.5 system-ui, sans-serif;
       pointer-events: none;
       transition: opacity 3s ease;
@@ -50,7 +50,7 @@
     let blinkPhase = 'wait';
 
     function scheduleBlink() {
-      setTimeout(() => { blinkPhase = 'closing'; }, 1800 + Math.random() * 3800);
+      setTimeout(() => { blinkPhase = 'closing'; }, 2000 + Math.random() * 4000);
     }
     scheduleBlink();
 
@@ -99,7 +99,7 @@
         setTimeout(() => { info.style.opacity = '0'; }, 600);
 
       } catch (_) {
-        info.textContent = 'Sin cámara — mueve el dedo por la pantalla';
+        info.textContent = 'Sin cámara — mueve el dedo';
         const setGaze = (x, y) => {
           targetGaze.x = ((x / window.innerWidth)  - 0.5) * 2;
           targetGaze.y = ((y / window.innerHeight) - 0.5) * 1.6;
@@ -112,14 +112,35 @@
       }
     }
 
-    function eyeShapePath(rx, ry) {
+    function eyeShapePath(rx, ry, flip) {
       ctx.beginPath();
-      ctx.moveTo(-rx, 0);
-      ctx.bezierCurveTo(-rx, -ry * 1.12,  rx, -ry * 1.12,  rx, 0);
-      ctx.bezierCurveTo( rx,  ry * 0.88, -rx,  ry * 0.88, -rx, 0);
+      ctx.moveTo(-rx, ry * 0.08);
+      ctx.bezierCurveTo(
+        -rx * 0.45, -ry * 1.15,
+         rx * 0.55, -ry * 1.18,
+         rx,        -ry * 0.10
+      );
+      ctx.bezierCurveTo(
+         rx * 0.55, ry * 0.88,
+        -rx * 0.45, ry * 0.88,
+        -rx, ry * 0.08
+      );
     }
 
-    function drawEye(cx, cy, w, h, gx, gy, blink) {
+    function drawSparkle(cx, cy, size) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.fillStyle = 'rgba(255,255,255,0.96)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, size, size * 0.22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, size * 0.22, size, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawEye(cx, cy, w, h, gx, gy, blink, flip) {
       const rx = w / 2;
       const ry = h / 2;
 
@@ -127,36 +148,37 @@
       ctx.translate(cx, cy);
 
       ctx.save();
-      eyeShapePath(rx, ry);
+      eyeShapePath(rx, ry, flip);
       ctx.clip();
 
-      ctx.fillStyle = '#fff9f4';
+      ctx.fillStyle = '#fff8f0';
       ctx.fillRect(-rx - 1, -ry - 1, w + 2, h + 2);
 
-      const irisR  = ry * 0.92;
-      const maxOff = Math.max(0, rx - irisR) * 0.88;
+      const irisR  = ry * 0.90;
+      const maxOff = Math.max(0, rx - irisR) * 0.85;
       const ipx    = Math.max(-maxOff, Math.min( maxOff, gx * maxOff));
-      const ipy    = Math.max(-maxOff * 0.55, Math.min(maxOff * 0.55, gy * maxOff * 0.52));
+      const ipy    = Math.max(-maxOff * 0.5, Math.min(maxOff * 0.5, gy * maxOff * 0.5));
 
       const ig = ctx.createRadialGradient(
-        ipx - irisR * 0.18, ipy - irisR * 0.22, irisR * 0.04,
+        ipx - irisR * 0.15, ipy - irisR * 0.20, irisR * 0.03,
         ipx, ipy, irisR
       );
-      ig.addColorStop(0,    '#c8eef8');
-      ig.addColorStop(0.20, '#60c8e0');
-      ig.addColorStop(0.52, '#1a95bc');
-      ig.addColorStop(0.80, '#0a6080');
-      ig.addColorStop(1,    '#022538');
+      ig.addColorStop(0,    '#fff4c0');
+      ig.addColorStop(0.18, '#fdd835');
+      ig.addColorStop(0.42, '#f5a623');
+      ig.addColorStop(0.65, '#c8780a');
+      ig.addColorStop(0.82, '#7a5200');
+      ig.addColorStop(1,    '#2e1800');
       ctx.beginPath();
       ctx.arc(ipx, ipy, irisR, 0, Math.PI * 2);
       ctx.fillStyle = ig;
       ctx.fill();
 
       ctx.save();
-      ctx.globalAlpha = 0.11;
-      ctx.strokeStyle = '#001a28';
-      ctx.lineWidth = 0.6;
-      for (let a = 0; a < Math.PI * 2; a += Math.PI / 9) {
+      ctx.globalAlpha = 0.13;
+      ctx.strokeStyle = '#3d2000';
+      ctx.lineWidth   = 0.7;
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 10) {
         ctx.beginPath();
         ctx.moveTo(ipx, ipy);
         ctx.lineTo(ipx + Math.cos(a) * irisR, ipy + Math.sin(a) * irisR);
@@ -166,49 +188,55 @@
 
       ctx.beginPath();
       ctx.arc(ipx, ipy, irisR, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(1,16,25,0.58)';
-      ctx.lineWidth = irisR * 0.09;
+      ctx.strokeStyle = 'rgba(20,8,0,0.55)';
+      ctx.lineWidth   = irisR * 0.08;
       ctx.stroke();
 
-      const pR = irisR * 0.40;
-      const pg = ctx.createRadialGradient(
-        ipx - pR * 0.22, ipy - pR * 0.25, 0,
-        ipx, ipy, pR
-      );
-      pg.addColorStop(0, '#200c30');
-      pg.addColorStop(1, '#050210');
+      const pR = irisR * 0.42;
+      const pW = pR * 0.34;
+      const pH = pR * 1.05;
+      ctx.save();
+      ctx.translate(ipx, ipy);
       ctx.beginPath();
-      ctx.arc(ipx, ipy, pR, 0, Math.PI * 2);
-      ctx.fillStyle = pg;
+      ctx.ellipse(0, 0, pW, pH, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#080008';
       ctx.fill();
+      const pupilGrad = ctx.createRadialGradient(-pW * 0.4, -pH * 0.35, 0, 0, 0, pH);
+      pupilGrad.addColorStop(0, 'rgba(80,20,100,0.35)');
+      pupilGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = pupilGrad;
+      ctx.fill();
+      ctx.restore();
+
+      drawSparkle(ipx - irisR * 0.30, ipy - irisR * 0.32, irisR * 0.26);
 
       ctx.save();
-      ctx.translate(ipx - irisR * 0.28, ipy - irisR * 0.32);
-      ctx.rotate(-0.22);
+      ctx.translate(ipx + irisR * 0.28, ipy + irisR * 0.20);
+      ctx.rotate(0.3);
       ctx.beginPath();
-      ctx.ellipse(0, 0, irisR * 0.20, irisR * 0.30, 0, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.94)';
+      ctx.ellipse(0, 0, irisR * 0.10, irisR * 0.15, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.80)';
       ctx.fill();
       ctx.restore();
 
       ctx.beginPath();
-      ctx.arc(ipx + irisR * 0.27, ipy + irisR * 0.22, irisR * 0.09, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.78)';
+      ctx.arc(ipx + irisR * 0.08, ipy - irisR * 0.50, irisR * 0.06, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.70)';
       ctx.fill();
 
       if (blink > 0.005) {
-        const closeY = -ry + blink * (h + ry * 0.18);
+        const closeY = -ry + blink * (h + ry * 0.20);
         ctx.beginPath();
-        ctx.moveTo(-rx * 1.2, -ry * 1.4);
-        ctx.lineTo( rx * 1.2, -ry * 1.4);
+        ctx.moveTo(-rx * 1.2, -ry * 1.5);
+        ctx.lineTo( rx * 1.2, -ry * 1.5);
         ctx.lineTo( rx * 1.2,  closeY);
         ctx.bezierCurveTo(
-           rx * 0.5, closeY + ry * 0.25,
-          -rx * 0.5, closeY + ry * 0.25,
+           rx * 0.5, closeY + ry * 0.28,
+          -rx * 0.5, closeY + ry * 0.28,
           -rx * 1.2, closeY
         );
         ctx.closePath();
-        ctx.fillStyle = '#060110';
+        ctx.fillStyle = '#0a0110';
         ctx.fill();
       }
 
@@ -216,35 +244,35 @@
 
       ctx.save();
       ctx.beginPath();
-      ctx.moveTo(-rx * 1.03, ry * 0.11);
-      ctx.bezierCurveTo(-rx * 0.55, -ry * 1.38, rx * 0.55, -ry * 1.38, rx * 1.03, ry * 0.11);
-      ctx.strokeStyle = '#060010';
-      ctx.lineWidth   = h * 0.135;
+      ctx.moveTo(-rx * 1.02, ry * 0.09);
+      ctx.bezierCurveTo(-rx * 0.50, -ry * 1.30, rx * 0.58, -ry * 1.35, rx * 1.02, -ry * 0.08);
+      ctx.strokeStyle = '#0a0010';
+      ctx.lineWidth   = h * 0.125;
       ctx.lineCap     = 'round';
       ctx.stroke();
       ctx.restore();
 
       const lashDefs = [
-        [0.08, 1.00], [0.20, 1.15], [0.35, 1.28],
-        [0.50, 1.33], [0.65, 1.28], [0.80, 1.15], [0.92, 1.00],
+        [0.08, 0.90], [0.22, 1.05], [0.38, 1.18],
+        [0.52, 1.22], [0.66, 1.15], [0.80, 1.02], [0.93, 0.88],
       ];
-      for (const [t, lenScale] of lashDefs) {
-        const θ   = Math.PI + t * Math.PI;
-        const bx  = rx * Math.cos(θ) * 1.06;
-        const by  = ry * Math.sin(θ) * 1.06 - ry * 0.12;
-        const dir = Math.atan2(by + ry * 0.10, bx) - Math.PI * 0.20;
-        const len = h * 0.33 * lenScale;
+      for (const [t, ls] of lashDefs) {
+        const theta = Math.PI + t * Math.PI;
+        const bx = rx * Math.cos(theta) * 1.05;
+        const by = ry * Math.sin(theta) * 1.05 - ry * 0.10;
+        const dir = Math.atan2(by + ry * 0.12, bx) - Math.PI * 0.18;
+        const len = h * 0.28 * ls;
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(bx, by);
         ctx.quadraticCurveTo(
-          bx + Math.cos(dir - 0.18) * len * 0.48,
-          by + Math.sin(dir - 0.18) * len * 0.48,
+          bx + Math.cos(dir - 0.15) * len * 0.45,
+          by + Math.sin(dir - 0.15) * len * 0.45,
           bx + Math.cos(dir) * len,
           by + Math.sin(dir) * len
         );
-        ctx.strokeStyle = '#060010';
-        ctx.lineWidth   = h * 0.047;
+        ctx.strokeStyle = '#0a0010';
+        ctx.lineWidth   = h * 0.040;
         ctx.lineCap     = 'round';
         ctx.stroke();
         ctx.restore();
@@ -252,29 +280,66 @@
 
       ctx.save();
       ctx.beginPath();
-      ctx.moveTo(-rx * 0.93, ry * 0.15);
-      ctx.bezierCurveTo(-rx * 0.38, ry * 1.10, rx * 0.38, ry * 1.10, rx * 0.93, ry * 0.15);
-      ctx.strokeStyle = '#0f0018';
-      ctx.lineWidth   = h * 0.042;
+      ctx.moveTo(-rx * 0.92, ry * 0.14);
+      ctx.bezierCurveTo(-rx * 0.38, ry * 1.05, rx * 0.38, ry * 1.05, rx * 0.92, ry * 0.14);
+      ctx.strokeStyle = '#160020';
+      ctx.lineWidth   = h * 0.035;
       ctx.lineCap     = 'round';
       ctx.stroke();
       ctx.restore();
 
+      ctx.restore();
+    }
+
+    function drawBrow(cx, cy, w, h) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.42, h * 0.08);
+      ctx.bezierCurveTo(-w * 0.10, -h * 0.40, w * 0.18, -h * 0.38, w * 0.42, h * 0.06);
+      ctx.strokeStyle = '#2a0e18';
+      ctx.lineWidth   = h * 0.16;
+      ctx.lineCap     = 'round';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawWhiskers(cx, cy, eyeW, eyeH, side) {
+      const angles = [-0.12, 0.02, 0.16];
+      const lens   = [0.90, 1.00, 0.85];
       for (let i = 0; i < 3; i++) {
-        const t  = (i + 1) / 4;
-        const lx = (t - 0.5) * rx * 1.4;
-        const ly = ry * 0.96;
+        const angle = side * angles[i];
+        const len   = eyeW * 0.95 * lens[i];
+        const wy    = cy + eyeH * (i * 0.22 - 0.15);
         ctx.save();
         ctx.beginPath();
-        ctx.moveTo(lx, ly);
-        ctx.lineTo(lx + (t - 0.5) * rx * 0.09, ly + h * 0.12);
-        ctx.strokeStyle = '#0f0018';
-        ctx.lineWidth   = h * 0.03;
+        ctx.moveTo(cx, wy);
+        ctx.lineTo(cx + side * Math.cos(angle) * len, wy + Math.sin(angle) * len);
+        ctx.strokeStyle = 'rgba(255, 200, 220, 0.50)';
+        ctx.lineWidth   = 1.6;
         ctx.lineCap     = 'round';
         ctx.stroke();
         ctx.restore();
       }
+    }
 
+    function drawNose(cx, cy, size) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.beginPath();
+      ctx.moveTo(0, size * 0.75);
+      ctx.lineTo(-size, 0);
+      ctx.lineTo( size, 0);
+      ctx.closePath();
+      const ng = ctx.createLinearGradient(0, 0, 0, size * 0.75);
+      ng.addColorStop(0, '#ff8fb0');
+      ng.addColorStop(1, '#e0607a');
+      ctx.fillStyle = ng;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(-size * 0.25, size * 0.18, size * 0.20, size * 0.12, -0.3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fill();
       ctx.restore();
     }
 
@@ -285,55 +350,45 @@
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
 
-      const eyeH    = Math.min(W * 0.24, H * 0.30);
-      const eyeW    = eyeH * 1.75;
-      const spacing = eyeW * 1.13;
-      const eyeY    = H * 0.50;
+      const eyeH    = Math.min(W * 0.25, H * 0.30);
+      const eyeW    = eyeH * 1.68;
+      const spacing = eyeW * 1.14;
+      const eyeY    = H * 0.47;
 
       for (const s of [-1, 1]) {
         const ex = W / 2 + s * spacing / 2;
-        const gw = ctx.createRadialGradient(ex, eyeY, 0, ex, eyeY, eyeW * 0.95);
-        gw.addColorStop(0, 'rgba(20, 110, 160, 0.10)');
+        const gw = ctx.createRadialGradient(ex, eyeY, 0, ex, eyeY, eyeW * 0.90);
+        gw.addColorStop(0, 'rgba(200, 140, 0, 0.12)');
         gw.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = gw;
         ctx.beginPath();
-        ctx.ellipse(ex, eyeY, eyeW * 0.95, eyeH * 1.2, 0, 0, Math.PI * 2);
+        ctx.ellipse(ex, eyeY, eyeW * 0.90, eyeH * 1.15, 0, 0, Math.PI * 2);
         ctx.fill();
       }
 
       for (const s of [-1, 1]) {
         const bx = W / 2 + s * spacing / 2;
-        const by = eyeY + eyeH * 0.72;
-        const bg = ctx.createRadialGradient(bx, by, 0, bx, by, eyeW * 0.40);
-        bg.addColorStop(0, 'rgba(255,105,135,0.23)');
-        bg.addColorStop(1, 'rgba(255,105,135,0)');
+        const by = eyeY + eyeH * 0.88;
+        const bg = ctx.createRadialGradient(bx, by, 0, bx, by, eyeW * 0.48);
+        bg.addColorStop(0, 'rgba(255, 90, 120, 0.28)');
+        bg.addColorStop(1, 'rgba(255, 90, 120, 0)');
         ctx.fillStyle = bg;
         ctx.beginPath();
-        ctx.ellipse(bx, by, eyeW * 0.40, eyeH * 0.52, 0, 0, Math.PI * 2);
+        ctx.ellipse(bx, by, eyeW * 0.48, eyeH * 0.60, 0, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      for (const s of [-1, 1]) {
-        const ex = W / 2 + s * spacing / 2;
-        const ey = eyeY - eyeH * 0.98;
-        ctx.save();
-        ctx.translate(ex, ey);
-        ctx.beginPath();
-        ctx.moveTo(-eyeW * 0.47, eyeH * 0.10);
-        ctx.bezierCurveTo(
-          -eyeW * 0.12, -eyeH * 0.38,
-           eyeW * 0.22, -eyeH * 0.33,
-           eyeW * 0.47,  eyeH * 0.08
-        );
-        ctx.strokeStyle = '#1a0820';
-        ctx.lineWidth   = eyeH * 0.13;
-        ctx.lineCap     = 'round';
-        ctx.stroke();
-        ctx.restore();
-      }
+      drawBrow(W / 2 - spacing / 2, eyeY - eyeH * 0.96, eyeW, eyeH);
+      drawBrow(W / 2 + spacing / 2, eyeY - eyeH * 0.96, eyeW, eyeH);
 
-      drawEye(W / 2 - spacing / 2, eyeY, eyeW, eyeH, gaze.x, gaze.y, blinkValue);
-      drawEye(W / 2 + spacing / 2, eyeY, eyeW, eyeH, gaze.x, gaze.y, blinkValue);
+      const whiskY = eyeY + eyeH * 0.62;
+      drawWhiskers(W / 2, whiskY, eyeW, eyeH, -1);
+      drawWhiskers(W / 2, whiskY, eyeW, eyeH,  1);
+
+      drawNose(W / 2, eyeY + eyeH * 0.40, eyeH * 0.16);
+
+      drawEye(W / 2 - spacing / 2, eyeY, eyeW, eyeH, gaze.x, gaze.y, blinkValue, false);
+      drawEye(W / 2 + spacing / 2, eyeY, eyeW, eyeH, gaze.x, gaze.y, blinkValue, true);
     }
 
     function loop() {
