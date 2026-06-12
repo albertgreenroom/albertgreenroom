@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Anime Eyes</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+    canvas { position: fixed; top: 0; left: 0; display: block; }
+    video  { display: none; position: fixed; }
+    #info  {
+      position: fixed;
+      bottom: 28px;
+      width: 100%;
+      text-align: center;
+      color: rgba(255, 255, 255, 0.35);
+      font: 13px/1.5 system-ui, sans-serif;
+      pointer-events: none;
+      transition: opacity 3s ease;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <video  id="video" playsinline autoplay muted></video>
+  <div   id="info">Iniciando cámara...</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.js"></script>
+
+  <script>
+  (() => {
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+    const video  = document.getElementById('video');
+    const info   = document.getElementById('info');
+
+    // ── Resize ──────────────────────────────────────────────────────────────
+    function resize() {
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ── Gaze state ──────────────────────────────────────────────────────────
+    const gaze       = { x: 0, y: 0 };   // current (smoothed) gaze [-1, 1]
+    const targetGaze = { x: 0, y: 0 };   // raw target from face detection
+
+    // ── Blink state machine ─────────────────────────────────────────────────
+    let blinkValue = 0;        // 0 = fully open, 1 = fully closed
+    let blinkPhase = 'wait';   // 'wait' | 'closing' | 'opening'
+
+    function scheduleBlink() {
+      setTimeout(() => { blinkPhase = 'closing'; }, 1800 + Math.random() * 3800);
+    }
+    scheduleBlink();
+
+    // ── Face detection ───────────────────────────────────────────────────────
+    let model = null;
+    let busy  = false;
+
+    async function detectFace() {
+      if (!model || busy || video.readyState < 2) return;
+      busy = true;
+      try {
+        const faces = await model.estimateFaces(video, false);
+        if (faces.length > 0) {
+          const f  = faces[0];
+          const vw = video.videoWidth  || 640;
+          const vh = video.videoHeight || 480;
+          let fx, fy;
+          if (f.landmarks && f.landmarks.length > 2) {
+            // Nose tip → most stable landmark for gaze target
+            fx = f.landmarks[2][0] / vw;
+            fy = f.landmarks[2][1] / vh;
+          } else {
+            fx = (f.topLeft[0] + f.bottomRight[0]) / 2 / vw;
+            fy = (f.topLeft[1] + f.bottomRight[1]) / 2 / vh;
+          }
+          // Front camera mirrors X, so negate to make eyes follow the face
+          targetGaze.x = Math.max(-1, Math.min(1, -(fx - 0.5) * 2.5));
+          targetGaze.y = Math.max(-1, Math.min(1,  (fy - 0.5) * 1.8));
+        }
+      } catch (_) {}
+      busy = false;
+    }
+
+    // ── Init camera & model ─────────────────────────────────────────────────
+    async function init() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
+        });
+        video.srcObject = stream;
+        await new Promise(r => { video.onloadedmetadata = r; });
+        await video.play();
+
+        info.textContent = 'Cargando modelo IA...';
+        model = await blazeface.load();
+        setInterval(detectFace, 80); // ~12 fps face detection
+
+        info.textContent = '';
+        setTimeout(() => { info.style.opacity = '0'; }, 600);
+
+      } catch (_) {
+        info.textContent = 'Sin cámara — mueve el dedo por la pantalla';
+        const setGaze = (x, y) => {
+          targetGaze.x = ((x / window.innerWidth)  - 0.5) * 2;
+          targetGaze.y = ((y / window.innerHeight) - 0.5) * 1.6;
+        };
+        window.addEventListener('mousemove', e => setGaze(e.clientX, e.clientY));
+        window.addEventListener('touchmove', e => {
+          e.preventDefault();
+          setGaze(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: false });
+      }
+    }
+
+    // ── Eye shape path ───────────────────────────────────────────────────────
+    // Anime eye: exaggerated top arc, flatter bottom
+    function eyeShapePath(rx, ry) {
+      ctx.beginPath();
+      ctx.moveTo(-rx, 0);
+      ctx.bezierCurveTo(-rx, -ry * 1.12,  rx, -ry * 1.12,  rx, 0);
+      ctx.bezierCurveTo( rx,  ry * 0.88, -rx,  ry * 0.88, -rx, 0);
+    }
+
+    // ── Draw one anime eye ───────────────────────────────────────────────────
+    function drawEye(cx, cy, w, h, gx, gy, blink) {
+      const rx = w / 2;
+      const ry = h / 2;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      // ── Clip to eye shape ──
+      ctx.save();
+      eyeShapePath(rx, ry);
+      ctx.clip();
+
+      // Sclera (warm white)
+      ctx.fillStyle = '#fff9f4';
+      ctx.fillRect(-rx - 1, -ry - 1, w + 2, h + 2);
+
+      // Iris
+      const irisR  = ry * 0.92;
+      const maxOff = Math.max(0, rx - irisR) * 0.88;
+      const ipx    = Math.max(-maxOff, Math.min( maxOff, gx * maxOff));
+      const ipy    = Math.max(-maxOff * 0.55, Math.min(maxOff * 0.55, gy * maxOff * 0.52));
+
+      const ig = ctx.createRadialGradient(
+        ipx - irisR * 0.18, ipy - irisR * 0.22, irisR * 0.04,
+        ipx, ipy, irisR
+      );
+      ig.addColorStop(0,    '#c8eef8');
+      ig.addColorStop(0.20, '#60c8e0');
+      ig.addColorStop(0.52, '#1a95bc');
+      ig.addColorStop(0.80, '#0a6080');
+      ig.addColorStop(1,    '#022538');
+      ctx.beginPath();
+      ctx.arc(ipx, ipy, irisR, 0, Math.PI * 2);
+      ctx.fillStyle = ig;
+      ctx.fill();
+
+      // Iris radial lines (subtle texture)
+      ctx.save();
+      ctx.globalAlpha = 0.11;
+      ctx.strokeStyle = '#001a28';
+      ctx.lineWidth = 0.6;
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 9) {
+        ctx.beginPath();
+        ctx.moveTo(ipx, ipy);
+        ctx.lineTo(ipx + Math.cos(a) * irisR, ipy + Math.sin(a) * irisR);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Limbal ring (dark iris edge)
+      ctx.beginPath();
+      ctx.arc(ipx, ipy, irisR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(1,16,25,0.58)';
+      ctx.lineWidth = irisR * 0.09;
+      ctx.stroke();
+
+      // Pupil
+      const pR = irisR * 0.40;
+      const pg = ctx.createRadialGradient(
+        ipx - pR * 0.22, ipy - pR * 0.25, 0,
+        ipx, ipy, pR
+      );
+      pg.addColorStop(0, '#200c30');
+      pg.addColorStop(1, '#050210');
+      ctx.beginPath();
+      ctx.arc(ipx, ipy, pR, 0, Math.PI * 2);
+      ctx.fillStyle = pg;
+      ctx.fill();
+
+      // Main shine — large oval, top-left of iris
+      ctx.save();
+      ctx.translate(ipx - irisR * 0.28, ipy - irisR * 0.32);
+      ctx.rotate(-0.22);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, irisR * 0.20, irisR * 0.30, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.94)';
+      ctx.fill();
+      ctx.restore();
+
+      // Secondary shine — small, bottom-right
+      ctx.beginPath();
+      ctx.arc(ipx + irisR * 0.27, ipy + irisR * 0.22, irisR * 0.09, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.78)';
+      ctx.fill();
+
+      // Blink eyelid sliding down
+      if (blink > 0.005) {
+        const closeY = -ry + blink * (h + ry * 0.18);
+        ctx.beginPath();
+        ctx.moveTo(-rx * 1.2, -ry * 1.4);
+        ctx.lineTo( rx * 1.2, -ry * 1.4);
+        ctx.lineTo( rx * 1.2,  closeY);
+        ctx.bezierCurveTo(
+           rx * 0.5, closeY + ry * 0.25,
+          -rx * 0.5, closeY + ry * 0.25,
+          -rx * 1.2, closeY
+        );
+        ctx.closePath();
+        ctx.fillStyle = '#060110';
+        ctx.fill();
+      }
+
+      ctx.restore(); // end clip
+
+      // ── Outside clip: lines & lashes ────────────────────────────────────
+
+      // Upper eyelid — thick curved stroke (manga-style)
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(-rx * 1.03, ry * 0.11);
+      ctx.bezierCurveTo(-rx * 0.55, -ry * 1.38, rx * 0.55, -ry * 1.38, rx * 1.03, ry * 0.11);
+      ctx.strokeStyle = '#060010';
+      ctx.lineWidth   = h * 0.135;
+      ctx.lineCap     = 'round';
+      ctx.stroke();
+      ctx.restore();
+
+      // Upper eyelashes — 7 curved spikes
+      const lashDefs = [
+        [0.08, 1.00],
+        [0.20, 1.15],
+        [0.35, 1.28],
+        [0.50, 1.33],
+        [0.65, 1.28],
+        [0.80, 1.15],
+        [0.92, 1.00],
+      ];
+      for (const [t, lenScale] of lashDefs) {
+        // Sample top of ellipse (θ goes π → 2π, left to right)
+        const θ   = Math.PI + t * Math.PI;
+        const bx  = rx * Math.cos(θ) * 1.06;
+        const by  = ry * Math.sin(θ) * 1.06 - ry * 0.12;
+        // Direction: away from eye centre + upward tilt
+        const dir = Math.atan2(by + ry * 0.10, bx) - Math.PI * 0.20;
+        const len = h * 0.33 * lenScale;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.quadraticCurveTo(
+          bx + Math.cos(dir - 0.18) * len * 0.48,
+          by + Math.sin(dir - 0.18) * len * 0.48,
+          bx + Math.cos(dir) * len,
+          by + Math.sin(dir) * len
+        );
+        ctx.strokeStyle = '#060010';
+        ctx.lineWidth   = h * 0.047;
+        ctx.lineCap     = 'round';
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Lower eyelid — thin curved line
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(-rx * 0.93, ry * 0.15);
+      ctx.bezierCurveTo(-rx * 0.38, ry * 1.10, rx * 0.38, ry * 1.10, rx * 0.93, ry * 0.15);
+      ctx.strokeStyle = '#0f0018';
+      ctx.lineWidth   = h * 0.042;
+      ctx.lineCap     = 'round';
+      ctx.stroke();
+      ctx.restore();
+
+      // Lower mini-lashes (3)
+      for (let i = 0; i < 3; i++) {
+        const t  = (i + 1) / 4;
+        const lx = (t - 0.5) * rx * 1.4;
+        const ly = ry * 0.96;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(lx, ly);
+        ctx.lineTo(lx + (t - 0.5) * rx * 0.09, ly + h * 0.12);
+        ctx.strokeStyle = '#0f0018';
+        ctx.lineWidth   = h * 0.03;
+        ctx.lineCap     = 'round';
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.restore(); // main translate
+    }
+
+    // ── Draw frame ───────────────────────────────────────────────────────────
+    function draw() {
+      const W = canvas.width;
+      const H = canvas.height;
+
+      // Black background
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+
+      // Eye dimensions — scale to fit any screen
+      const eyeH    = Math.min(W * 0.24, H * 0.30);
+      const eyeW    = eyeH * 1.75;
+      const spacing = eyeW * 1.13;  // centre-to-centre
+      const eyeY    = H * 0.50;
+
+      // Subtle cyan glow behind each eye
+      for (const s of [-1, 1]) {
+        const ex = W / 2 + s * spacing / 2;
+        const gw = ctx.createRadialGradient(ex, eyeY, 0, ex, eyeY, eyeW * 0.95);
+        gw.addColorStop(0, 'rgba(20, 110, 160, 0.10)');
+        gw.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = gw;
+        ctx.beginPath();
+        ctx.ellipse(ex, eyeY, eyeW * 0.95, eyeH * 1.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Blush marks under eyes (pink radial gradient)
+      for (const s of [-1, 1]) {
+        const bx = W / 2 + s * spacing / 2;
+        const by = eyeY + eyeH * 0.72;
+        const bg = ctx.createRadialGradient(bx, by, 0, bx, by, eyeW * 0.40);
+        bg.addColorStop(0, 'rgba(255,105,135,0.23)');
+        bg.addColorStop(1, 'rgba(255,105,135,0)');
+        ctx.fillStyle = bg;
+        ctx.beginPath();
+        ctx.ellipse(bx, by, eyeW * 0.40, eyeH * 0.52, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Eyebrows
+      for (const s of [-1, 1]) {
+        const ex = W / 2 + s * spacing / 2;
+        const ey = eyeY - eyeH * 0.98;
+        ctx.save();
+        ctx.translate(ex, ey);
+        ctx.beginPath();
+        ctx.moveTo(-eyeW * 0.47, eyeH * 0.10);
+        ctx.bezierCurveTo(
+          -eyeW * 0.12, -eyeH * 0.38,
+           eyeW * 0.22, -eyeH * 0.33,
+           eyeW * 0.47,  eyeH * 0.08
+        );
+        ctx.strokeStyle = '#1a0820';
+        ctx.lineWidth   = eyeH * 0.13;
+        ctx.lineCap     = 'round';
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Both eyes
+      drawEye(W / 2 - spacing / 2, eyeY, eyeW, eyeH, gaze.x, gaze.y, blinkValue);
+      drawEye(W / 2 + spacing / 2, eyeY, eyeW, eyeH, gaze.x, gaze.y, blinkValue);
+    }
+
+    // ── Render loop ──────────────────────────────────────────────────────────
+    function loop() {
+      // Smooth gaze toward target
+      gaze.x += (targetGaze.x - gaze.x) * 0.10;
+      gaze.y += (targetGaze.y - gaze.y) * 0.10;
+
+      // Blink state machine
+      if (blinkPhase === 'closing') {
+        blinkValue += 0.16;
+        if (blinkValue >= 1) { blinkValue = 1; blinkPhase = 'opening'; }
+      } else if (blinkPhase === 'opening') {
+        blinkValue -= 0.10;
+        if (blinkValue <= 0) { blinkValue = 0; blinkPhase = 'wait'; scheduleBlink(); }
+      }
+
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    // Start render loop immediately, then load camera async
+    requestAnimationFrame(loop);
+    init();
+  })();
+  </script>
+</body>
+</html>
