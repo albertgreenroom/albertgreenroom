@@ -36,7 +36,6 @@
     const video  = document.getElementById('video');
     const info   = document.getElementById('info');
 
-    // ── Resize ──────────────────────────────────────────────────────────────
     function resize() {
       canvas.width  = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -44,20 +43,17 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // ── Gaze state ──────────────────────────────────────────────────────────
-    const gaze       = { x: 0, y: 0 };   // current (smoothed) gaze [-1, 1]
-    const targetGaze = { x: 0, y: 0 };   // raw target from face detection
+    const gaze       = { x: 0, y: 0 };
+    const targetGaze = { x: 0, y: 0 };
 
-    // ── Blink state machine ─────────────────────────────────────────────────
-    let blinkValue = 0;        // 0 = fully open, 1 = fully closed
-    let blinkPhase = 'wait';   // 'wait' | 'closing' | 'opening'
+    let blinkValue = 0;
+    let blinkPhase = 'wait';
 
     function scheduleBlink() {
       setTimeout(() => { blinkPhase = 'closing'; }, 1800 + Math.random() * 3800);
     }
     scheduleBlink();
 
-    // ── Face detection ───────────────────────────────────────────────────────
     let model = null;
     let busy  = false;
 
@@ -72,14 +68,12 @@
           const vh = video.videoHeight || 480;
           let fx, fy;
           if (f.landmarks && f.landmarks.length > 2) {
-            // Nose tip → most stable landmark for gaze target
             fx = f.landmarks[2][0] / vw;
             fy = f.landmarks[2][1] / vh;
           } else {
             fx = (f.topLeft[0] + f.bottomRight[0]) / 2 / vw;
             fy = (f.topLeft[1] + f.bottomRight[1]) / 2 / vh;
           }
-          // Front camera mirrors X, so negate to make eyes follow the face
           targetGaze.x = Math.max(-1, Math.min(1, -(fx - 0.5) * 2.5));
           targetGaze.y = Math.max(-1, Math.min(1,  (fy - 0.5) * 1.8));
         }
@@ -87,7 +81,6 @@
       busy = false;
     }
 
-    // ── Init camera & model ─────────────────────────────────────────────────
     async function init() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -100,7 +93,7 @@
 
         info.textContent = 'Cargando modelo IA...';
         model = await blazeface.load();
-        setInterval(detectFace, 80); // ~12 fps face detection
+        setInterval(detectFace, 80);
 
         info.textContent = '';
         setTimeout(() => { info.style.opacity = '0'; }, 600);
@@ -119,8 +112,6 @@
       }
     }
 
-    // ── Eye shape path ───────────────────────────────────────────────────────
-    // Anime eye: exaggerated top arc, flatter bottom
     function eyeShapePath(rx, ry) {
       ctx.beginPath();
       ctx.moveTo(-rx, 0);
@@ -128,7 +119,6 @@
       ctx.bezierCurveTo( rx,  ry * 0.88, -rx,  ry * 0.88, -rx, 0);
     }
 
-    // ── Draw one anime eye ───────────────────────────────────────────────────
     function drawEye(cx, cy, w, h, gx, gy, blink) {
       const rx = w / 2;
       const ry = h / 2;
@@ -136,16 +126,13 @@
       ctx.save();
       ctx.translate(cx, cy);
 
-      // ── Clip to eye shape ──
       ctx.save();
       eyeShapePath(rx, ry);
       ctx.clip();
 
-      // Sclera (warm white)
       ctx.fillStyle = '#fff9f4';
       ctx.fillRect(-rx - 1, -ry - 1, w + 2, h + 2);
 
-      // Iris
       const irisR  = ry * 0.92;
       const maxOff = Math.max(0, rx - irisR) * 0.88;
       const ipx    = Math.max(-maxOff, Math.min( maxOff, gx * maxOff));
@@ -165,7 +152,6 @@
       ctx.fillStyle = ig;
       ctx.fill();
 
-      // Iris radial lines (subtle texture)
       ctx.save();
       ctx.globalAlpha = 0.11;
       ctx.strokeStyle = '#001a28';
@@ -178,14 +164,12 @@
       }
       ctx.restore();
 
-      // Limbal ring (dark iris edge)
       ctx.beginPath();
       ctx.arc(ipx, ipy, irisR, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(1,16,25,0.58)';
       ctx.lineWidth = irisR * 0.09;
       ctx.stroke();
 
-      // Pupil
       const pR = irisR * 0.40;
       const pg = ctx.createRadialGradient(
         ipx - pR * 0.22, ipy - pR * 0.25, 0,
@@ -198,7 +182,6 @@
       ctx.fillStyle = pg;
       ctx.fill();
 
-      // Main shine — large oval, top-left of iris
       ctx.save();
       ctx.translate(ipx - irisR * 0.28, ipy - irisR * 0.32);
       ctx.rotate(-0.22);
@@ -208,13 +191,11 @@
       ctx.fill();
       ctx.restore();
 
-      // Secondary shine — small, bottom-right
       ctx.beginPath();
       ctx.arc(ipx + irisR * 0.27, ipy + irisR * 0.22, irisR * 0.09, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.78)';
       ctx.fill();
 
-      // Blink eyelid sliding down
       if (blink > 0.005) {
         const closeY = -ry + blink * (h + ry * 0.18);
         ctx.beginPath();
@@ -231,11 +212,8 @@
         ctx.fill();
       }
 
-      ctx.restore(); // end clip
+      ctx.restore();
 
-      // ── Outside clip: lines & lashes ────────────────────────────────────
-
-      // Upper eyelid — thick curved stroke (manga-style)
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(-rx * 1.03, ry * 0.11);
@@ -246,22 +224,14 @@
       ctx.stroke();
       ctx.restore();
 
-      // Upper eyelashes — 7 curved spikes
       const lashDefs = [
-        [0.08, 1.00],
-        [0.20, 1.15],
-        [0.35, 1.28],
-        [0.50, 1.33],
-        [0.65, 1.28],
-        [0.80, 1.15],
-        [0.92, 1.00],
+        [0.08, 1.00], [0.20, 1.15], [0.35, 1.28],
+        [0.50, 1.33], [0.65, 1.28], [0.80, 1.15], [0.92, 1.00],
       ];
       for (const [t, lenScale] of lashDefs) {
-        // Sample top of ellipse (θ goes π → 2π, left to right)
         const θ   = Math.PI + t * Math.PI;
         const bx  = rx * Math.cos(θ) * 1.06;
         const by  = ry * Math.sin(θ) * 1.06 - ry * 0.12;
-        // Direction: away from eye centre + upward tilt
         const dir = Math.atan2(by + ry * 0.10, bx) - Math.PI * 0.20;
         const len = h * 0.33 * lenScale;
         ctx.save();
@@ -280,7 +250,6 @@
         ctx.restore();
       }
 
-      // Lower eyelid — thin curved line
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(-rx * 0.93, ry * 0.15);
@@ -291,7 +260,6 @@
       ctx.stroke();
       ctx.restore();
 
-      // Lower mini-lashes (3)
       for (let i = 0; i < 3; i++) {
         const t  = (i + 1) / 4;
         const lx = (t - 0.5) * rx * 1.4;
@@ -307,25 +275,21 @@
         ctx.restore();
       }
 
-      ctx.restore(); // main translate
+      ctx.restore();
     }
 
-    // ── Draw frame ───────────────────────────────────────────────────────────
     function draw() {
       const W = canvas.width;
       const H = canvas.height;
 
-      // Black background
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
 
-      // Eye dimensions — scale to fit any screen
       const eyeH    = Math.min(W * 0.24, H * 0.30);
       const eyeW    = eyeH * 1.75;
-      const spacing = eyeW * 1.13;  // centre-to-centre
+      const spacing = eyeW * 1.13;
       const eyeY    = H * 0.50;
 
-      // Subtle cyan glow behind each eye
       for (const s of [-1, 1]) {
         const ex = W / 2 + s * spacing / 2;
         const gw = ctx.createRadialGradient(ex, eyeY, 0, ex, eyeY, eyeW * 0.95);
@@ -337,7 +301,6 @@
         ctx.fill();
       }
 
-      // Blush marks under eyes (pink radial gradient)
       for (const s of [-1, 1]) {
         const bx = W / 2 + s * spacing / 2;
         const by = eyeY + eyeH * 0.72;
@@ -350,7 +313,6 @@
         ctx.fill();
       }
 
-      // Eyebrows
       for (const s of [-1, 1]) {
         const ex = W / 2 + s * spacing / 2;
         const ey = eyeY - eyeH * 0.98;
@@ -370,18 +332,14 @@
         ctx.restore();
       }
 
-      // Both eyes
       drawEye(W / 2 - spacing / 2, eyeY, eyeW, eyeH, gaze.x, gaze.y, blinkValue);
       drawEye(W / 2 + spacing / 2, eyeY, eyeW, eyeH, gaze.x, gaze.y, blinkValue);
     }
 
-    // ── Render loop ──────────────────────────────────────────────────────────
     function loop() {
-      // Smooth gaze toward target
       gaze.x += (targetGaze.x - gaze.x) * 0.10;
       gaze.y += (targetGaze.y - gaze.y) * 0.10;
 
-      // Blink state machine
       if (blinkPhase === 'closing') {
         blinkValue += 0.16;
         if (blinkValue >= 1) { blinkValue = 1; blinkPhase = 'opening'; }
@@ -394,7 +352,6 @@
       requestAnimationFrame(loop);
     }
 
-    // Start render loop immediately, then load camera async
     requestAnimationFrame(loop);
     init();
   })();
